@@ -34,8 +34,8 @@ def get_live_market_status():
 
 def ask_gemini(prompt):
     api_key = (GEMINI_API_KEY or "").strip()
-    base = "https://" + "://googleapis.com"
-    url = base + MODEL_ID + ":generateContent?key=" + api_key
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_ID}:generateContent?key={api_key}"
+
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
@@ -49,15 +49,15 @@ def ask_gemini(prompt):
 
 def get_crypto_prices():
     try:
-        base = "https://" + "://coingecko.com"
-        url = base + "?ids=bitcoin,ethereum,binancecoin,solana&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true"
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true"
         res = requests.get(url, timeout=10).json()
+
         coins = []
         for cid, sym in [("bitcoin", "BTC"), ("ethereum", "ETH"), ("binancecoin", "BNB"), ("solana", "SOL")]:
             if cid in res:
                 vol_b = res[cid].get('usd_24h_vol', 0) / 1e9
                 coins.append(f"{sym}: ${res[cid]['usd']} ({res[cid]['usd_24h_change']:+.2f}% | 24h Vol: ${vol_b:.2f}B)")
-        return " | ".join(coins)
+        return " | ".join(coins) if coins else "No crypto data available."
     except Exception as e:
         return f"Crypto Data Error: {e}"
 
@@ -66,16 +66,14 @@ def get_world_comprehensive_news(nse_live, mcx_live):
         ("Global Macro & Institutional", "world+economy+US+Fed+inflation+geopolitics+war+oil+FII+institutional+news"),
         ("Crypto Whales & Regulation", "cryptocurrency+bitcoin+ethereum+whale+ETF+inflow+outflow+SEC+news")
     ]
-    if mcx_live:
-        queries.append(("Commodities & MCX", "gold+silver+crude+oil+MCX+commodity+price+news+today"))
     if nse_live:
         queries.append(("India Corporate & FII/DII", "NSE+BSE+stocks+order+win+FII+DII+block+deal+India+today"))
 
     all_headlines = []
-    rss_base = "https://" + "://google.com"
+    rss_base = "https://news.google.com/rss/search?q="
     for category, q in queries:
         try:
-            rss_url = rss_base + q + "&hl=en-IN&gl=IN&ceid=IN:en"
+            rss_url = f"{rss_base}{q}&hl=en-IN&gl=IN&ceid=IN:en"
             feed = feedparser.parse(rss_url)
             for entry in feed.entries[:4]:
                 all_headlines.append(f"[{category}] {entry.title}")
@@ -146,7 +144,7 @@ def scan_top5_smart_money_only():
                     vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
 
                     high_5d = float(hist['High'].iloc[-5:].max())
-                    low_5d = float(hist['Low'].iloc[-5:].min())
+                    low_5d = float(hist['High'].iloc[-5:].min())
                     high_15d = float(hist['High'].max())
                     low_15d = float(hist['Low'].min())
 
@@ -204,7 +202,7 @@ def scan_top5_smart_money_only():
 def send_telegram_alert(full_message):
     token = (TELEGRAM_BOT_TOKEN or "").strip()
     chat_id = (TELEGRAM_CHAT_ID or "").strip()
-    url = "https://" + "api.telegram.org/bot" + token + "/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     chunks = [full_message[i : i + 4000] for i in range(0, len(full_message), 4000)]
     for chunk in chunks:
         payload = {"chat_id": chat_id, "text": chunk}
@@ -213,6 +211,12 @@ def send_telegram_alert(full_message):
 
 def analyze_everything():
     time_str, nse_live, mcx_live = get_live_market_status()
+
+    # ਜੇਕਰ ਮਾਰਕੀਟ ਬੰਦ ਹੈ, ਤਾਂ ਅਲਰਟ ਨਹੀਂ ਭੇਜੇਗਾ
+    if not nse_live and not mcx_live:
+        print(f"[{time_str}] Market is CLOSED. No alert sent.")
+        return
+
     crypto_info = get_crypto_prices()
     live_market_data = get_live_indices_and_mcx(nse_live, mcx_live)
     world_news = get_world_comprehensive_news(nse_live, mcx_live)
@@ -224,23 +228,22 @@ def analyze_everything():
     if nse_live:
         active_markets.append("NSE Indian Stocks (Live)")
 
-    mcx_intra_line = "- MCX Intraday (Gold, Silver): Action | Entry | Exit/Target | Stop-Loss (SL)" if mcx_live else ""
-    nse_idx_intra_line = "- Index Intraday (Nifty 50, Bank Nifty): Action | Entry | Exit/Target | Stop-Loss (SL)" if nse_live else ""
-    nse_stk_intra_line = "- Nifty 100 Top 5 (<₹1000) INTRADAY (3:15 PM ਤੱਕ): ਜੇ NO_100_PERCENT_CONFIRMED_INTRADAY ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Intraday ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ, Fake Move ਤੋਂ ਬਚੋ (WAIT)'। ਨਹੀਂ ਤਾਂ ਸਿਰਫ਼ ਪੱਕੇ ਸਟਾਕਸ ਲਈ: ਦਿਸ਼ਾ | Smart Money ਕਾਰਨ | Entry (₹) | Target 1 & 2 (₹) | Stop-Loss (₹)" if nse_live else ""
+    mcx_intra_line = "- MCX Intraday (Gold, Silver): Action | Entry | Target | Stop-Loss (SL)" if mcx_live else ""
+    nse_idx_intra_line = "- Index Intraday (Nifty 50, Bank Nifty): Action | Entry | Target | Stop-Loss (SL)" if nse_live else ""
+    nse_stk_intra_line = "- Nifty 100 Top 5 (<₹1000) INTRADAY: ਜੇ ਕੋਈ 100% ਪੱਕਾ ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ ਤਾਂ ਸਾਫ਼ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Intraday ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ, Fake Move ਤੋਂ ਬਚੋ (WAIT)'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | Smart Money ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
 
-    mcx_swing_line = "- MCX Swing (Gold, Silver): Action | Entry Zone | Swing Target | Stop-Loss (SL)" if mcx_live else ""
-    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Swing Target | Stop-Loss (SL)" if nse_live else ""
-    nse_stk_swing_line = "- Nifty 100 Top 5 (<₹1000) SWING (2-10 ਦਿਨ): ਜੇ NO_100_PERCENT_CONFIRMED_SWING ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਉਡੀਕ ਕਰੋ'। ਨਹੀਂ ਤਾਂ ਸਿਰਫ਼ ਪੱਕੇ ਸਟਾਕਸ ਲਈ: ਦਿਸ਼ਾ | ਅਸਲੀ ਬ੍ਰੇਕਆਊਟ ਕਾਰਨ | Entry (₹) | Target 1 & 2 (₹) | Stop-Loss (₹)" if nse_live else ""
+    mcx_swing_line = "- MCX Swing (Gold, Silver): Action | Entry Zone | Target | Stop-Loss (SL)" if mcx_live else ""
+    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Target | Stop-Loss (SL)" if nse_live else ""
+    nse_stk_swing_line = "- Nifty 100 Top 5 (<₹1000) SWING: ਜੇ ਕੋਈ ਪੱਕਾ ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਉਡੀਕ ਕਰੋ'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | ਅਸਲੀ ਬ੍ਰੇਕਆਊਟ ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
 
     prompt = (
         "Act as an elite Institutional Smart Money Trader, Liquidity Hunter, and Risk Manager.\n"
         f"Current Time: {time_str}\n"
         f"ACTIVE LIVE MARKETS RIGHT NOW: {', '.join(active_markets)}\n\n"
-        "STRICT ZERO-GUESSING & CAPITAL PROTECTION RULES:\n"
-        f"1. ONLY report on CURRENTLY LIVE markets ({', '.join(active_markets)}). Do NOT mention closed markets at all.\n"
-        "2. NEVER force a trade! If any coin, index, commodity, or stock shows low volume, sideways chop, or a Fake Breakout (liquidity sweep), DO NOT give a BUY/SELL call—strictly mark it as 'WAIT / NO TRADE (Fake Move Risk)'.\n"
-        "3. Only recommend trades with high institutional conviction (strong volume + clean structure).\n"
-        "4. Keep INTRADAY and SWING TRADE strictly separated.\n\n"
+        "STRICT CAPITAL PROTECTION & 100% VERIFIED TRADING RULES:\n"
+        "1. NEVER force a trade! If volume is low, chart is sideways, or a Fake Breakout / Liquidity Sweep is detected, do NOT give a BUY/SELL call—strictly mark it as 'WAIT / NO TRADE (Fake Move Risk)'.\n"
+        "2. Provide EXACT Entry, Target, and Stop-Loss (SL) for every valid setup. If a trade is not 100% high-conviction, reject it.\n"
+        "3. Keep INTRADAY and SWING trades strictly separated.\n\n"
         "LIVE DATA FEED:\n"
         f"- Crypto (24/7 Live): {crypto_info}\n"
         f"- Live Indices/MCX: {live_market_data}\n"
@@ -248,19 +251,19 @@ def analyze_everything():
         f"- Global Major & Minor News Scan:\n{world_news}\n\n"
         "Output the report in PURE PUNJABI (Gurmukhi script) for Telegram:\n\n"
         "🕵️‍♂️ 1. ਵੱਡੇ ਖਿਡਾਰੀਆਂ ਦੀ ਚਾਲ, ਗਲੋਬਲ ਨਿਊਜ਼ & Fake Breakout ਚੇਤਾਵਨੀ\n"
-        "- ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ ਅਤੇ ਵੱਡੇ ਖਿਡਾਰੀਆਂ (FIIs / Whales) ਦੀ ਅਸਲੀ ਪੋਜ਼ੀਸ਼ਨ।\n"
-        "- ਕਿੱਥੇ Fake Breakout (ਨਕਲੀ ਤੇਜ਼ੀ/ਮੰਦੀ) ਬਣਾ ਕੇ ਰਿਟੇਲਰਾਂ ਦਾ Stop-Loss ਖਾਧਾ ਜਾ ਰਿਹਾ ਹੈ।\n\n"
+        "- ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ ਅਤੇ FIIs / Whales ਦੀ ਪੋਜ਼ੀਸ਼ਨ।\n"
+        "- ਕਿੱਥੇ Fake Breakout ਬਣਾ ਕੇ ਰਿਟੇਲਰਾਂ ਨੂੰ ਫਸਾਇਆ ਜਾ ਰਿਹਾ ਹੈ।\n\n"
         "══════════════════════════\n"
-        "⚡ ਭਾਗ A: INTRADAY TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਸੈੱਟਅੱਪ - ਅੱਜ ਲਈ)\n"
+        "⚡ ਭਾਗ A: INTRADAY TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਸੈੱਟਅੱਪ)\n"
         "══════════════════════════\n"
-        "- Crypto Intraday (BTC, ETH, BNB, SOL): Action | Entry | Exit/Target | Stop-Loss (SL)\n"
+        "- Crypto Intraday (BTC, ETH, BNB, SOL): Action | Entry | Target | Stop-Loss (SL)\n"
         f"{mcx_intra_line}\n"
         f"{nse_idx_intra_line}\n"
         f"{nse_stk_intra_line}\n\n"
         "══════════════════════════\n"
-        "🌊 ਭਾਗ B: SWING TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਬ੍ਰੇਕਆਊਟ - 2 ਤੋਂ 10 ਦਿਨ)\n"
+        "🌊 ਭਾਗ B: SWING TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਬ੍ਰੇਕਆਊਟ)\n"
         "══════════════════════════\n"
-        "- Crypto Swing (BTC, ETH, BNB, SOL): Action | Entry Zone | Swing Target | Stop-Loss (SL)\n"
+        "- Crypto Swing (BTC, ETH, BNB, SOL): Action | Entry Zone | Target | Stop-Loss (SL)\n"
         f"{mcx_swing_line}\n"
         f"{nse_idx_swing_line}\n"
         f"{nse_stk_swing_line}\n\n"
@@ -268,7 +271,7 @@ def analyze_everything():
     )
 
     analysis_text = ask_gemini(prompt)
-    send_telegram_alert(f"🛡️ SMART MONEY & VERIFIED SETUP REPORT ({time_str})\n\n" + analysis_text)
+    send_telegram_alert(f"🛡️ LIVE SMART MONEY & VERIFIED SETUP REPORT ({time_str})\n\n" + analysis_text)
 
 if __name__ == "__main__":
     analyze_everything()
