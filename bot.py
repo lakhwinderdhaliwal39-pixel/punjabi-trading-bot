@@ -8,7 +8,7 @@ import pytz
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-MODEL_ID = "gemini-2.0-flash"  # ਸਭ ਤੋਂ ਤੇਜ਼ ਅਤੇ ਸਟੇਬਲ ਮਾਡਲ
+MODEL_ID = "gemini-3.5-flash"  # 3.5 ਮਾਡਲ ਸੈੱਟ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ
 
 NIFTY100_LOW_PRICE = [
     "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
@@ -27,14 +27,8 @@ def get_live_market_status():
     current_minutes = now.hour * 60 + now.minute
 
     is_weekday = weekday < 5
-    
-    # NSE Stocks / Index Time: 9:15 AM (555 min) to 3:30 PM (930 min)
     nse_live = is_weekday and (555 <= current_minutes <= 930)
-    
-    # MCX Time: 9:00 AM (540 min) to 11:30 PM (1410 min)
     mcx_live = is_weekday and (540 <= current_minutes <= 1410)
-    
-    # Crypto is 24/7 (Always True)
     crypto_live = True
 
     return now.strftime("%d-%b-%Y %I:%M %p IST"), nse_live, mcx_live, crypto_live
@@ -46,7 +40,6 @@ def ask_gemini(prompt):
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     
-    # 2 ਵਾਰ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਦਾ ਲੌ직ਕ (Retry Mechanism) ਤਾਂ ਜੋ ਜੇ ਪਹਿਲੀ ਵਾਰ ਟਾਈਮਆਊਟ ਹੋਵੇ ਤਾਂ ਦੂਜੀ ਵਾਰ ਚੱਲ ਪਵੇ
     for attempt in range(2):
         try:
             response = requests.post(url, headers=headers, json=data, timeout=120)
@@ -87,7 +80,7 @@ def get_world_comprehensive_news(nse_live, mcx_live):
         try:
             rss_url = f"{rss_base}{q}&hl=en-IN&gl=IN&ceid=IN:en"
             feed = feedparser.parse(rss_url)
-            for entry in feed.entries[:3]: # ਹੈੱਡਲਾਈਨਜ਼ ਘਟਾ ਕੇ 3 ਕਰ ਦਿੱਤੀਆਂ ਹਨ ਤਾਂ ਜੋ ਪ੍ਰੌਮਪਟ ਛੋਟਾ ਰਹੇ
+            for entry in feed.entries[:3]:
                 all_headlines.append(f"[{category}] {entry.title}")
         except Exception:
             continue
@@ -125,7 +118,6 @@ def get_live_indices_and_mcx(nse_live, mcx_live):
 
 def scan_top5_smart_money_only():
     intraday_movers = []
-    swing_movers = []
     fake_traps_detected = []
 
     try:
