@@ -8,8 +8,9 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 MODEL_ID = "gemini-3.5-flash"
 
+# Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ (Low Price < ₹1000) ਵਾਲੇ ਚੋਟੀ ਦੇ ਸਟਾਕਸ
 NIFTY100_LOW_PRICE = [
-    "TATAMOTORS.NS", "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS",
+    "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS",
     "ETERNAL.NS", "IRCTC.NS", "POWERGRID.NS", "NTPC.NS", "COALINDIA.NS",
     "BHEL.NS", "ONGC.NS", "GAIL.NS", "IOC.NS", "BPCL.NS",
     "VEDL.NS", "HINDALCO.NS", "TATASTEEL.NS", "JSWSTEEL.NS", "DLF.NS",
@@ -19,23 +20,25 @@ NIFTY100_LOW_PRICE = [
 ]
 
 def ask_gemini(prompt):
-    url = f"https://googleapis.com{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
+    base = "https://" + "://googleapis.com"
+    url = f"{base}/v1beta/models/{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
         response = requests.post(url, headers=headers, json=data, timeout=120)
         res_json = response.json()
         if 'candidates' in res_json and len(res_json['candidates']) > 0:
-            candidate = res_json['candidates']
+            candidate = res_json['candidates'][0]
             if 'content' in candidate and 'parts' in candidate['content']:
-                return candidate['content']['parts']['text']
+                return candidate['content']['parts'][0]['text']
         return f"Gemini API Raw Response: {res_json}"
     except Exception as e:
         return f"Gemini API Error: {e}"
 
 def get_crypto_prices():
     try:
-        url = "https://coingecko.com"
+        api_base = "https://" + "://coingecko.com"
+        url = f"{api_base}/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true"
         res = requests.get(url, timeout=10).json()
         btc = f"BTC: ${res['bitcoin']['usd']} ({res['bitcoin']['usd_24h_change']:+.2f}%)"
         eth = f"ETH: ${res['ethereum']['usd']} ({res['ethereum']['usd_24h_change']:+.2f}%)"
@@ -47,16 +50,17 @@ def get_crypto_prices():
 def get_global_and_stock_news():
     headlines = []
     try:
-        rss_macro = "https://google.com"
+        news_base = "https://" + "://google.com"
+        rss_macro = f"{news_base}/rss/search?q=stock+market+economy+FII+DII+inflation+India&hl=en-IN&gl=IN&ceid=IN:en"
         feed1 = feedparser.parse(rss_macro)
         for entry in feed1.entries[:4]:
             headlines.append(f"- [Macro] {entry.title}")
-            
-        rss_stocks = "https://google.com"
+
+        rss_stocks = f"{news_base}/rss/search?q=NSE+stocks+news+order+win+breakout+India+today&hl=en-IN&gl=IN&ceid=IN:en"
         feed2 = feedparser.parse(rss_stocks)
         for entry in feed2.entries[:5]:
             headlines.append(f"- [Stock News] {entry.title}")
-            
+
         return "\n".join(headlines) if headlines else "No major breaking news right now."
     except Exception as e:
         return f"News Fetch Error: {e}"
@@ -96,25 +100,25 @@ def scan_top5_intraday_and_swing():
                     curr_price = float(hist['Close'].iloc[-1])
                     prev_close = float(hist['Close'].iloc[-2])
                     open_price = float(hist['Open'].iloc[-1])
-                    
+
                     if curr_price > 1000:
                         continue
-                        
+
                     day_change_pct = ((curr_price - prev_close) / prev_close) * 100
                     intraday_move_pct = ((curr_price - open_price) / open_price) * 100
-                    
+
                     avg_vol = float(hist['Volume'].iloc[:-1].mean())
                     curr_vol = float(hist['Volume'].iloc[-1])
                     vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
-                    
+
                     high_5d = float(hist['High'].iloc[-5:].max())
                     low_5d = float(hist['Low'].iloc[-5:].min())
                     high_15d = float(hist['High'].max())
                     low_15d = float(hist['Low'].min())
-                    
+
                     is_intraday = (vol_ratio >= 1.25) or (abs(intraday_move_pct) >= 1.0)
                     is_swing = (curr_price >= high_15d * 0.985) or (curr_price <= low_15d * 1.015)
-                    
+
                     if is_intraday or is_swing or abs(day_change_pct) >= 1.2:
                         score = (vol_ratio * 2) + abs(day_change_pct) + (1.5 if is_swing else 0)
                         clean_name = sym.replace(".NS", "")
@@ -129,16 +133,17 @@ def scan_top5_intraday_and_swing():
     except Exception:
         pass
 
-     movers.sort(reverse=True)
+    movers.sort(reverse=True)
     top_5 = [info for score, info in movers[:5]]
-    
+
     if not top_5:
         return "NO_STRONG_MOVE: ਇਸ ਵੇਲੇ Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰਾਂ ਵਿੱਚ ਕੋਈ ਵੱਡਾ Intraday ਜਾਂ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ।"
     return "\n".join(top_5)
 
 def send_telegram_alert(full_message):
     try:
-        url = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage"
+        tg_base = "https://" + "api.telegram.org"
+        url = f"{tg_base}/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         chunk_size = 4000
         chunks = [full_message[i : i + chunk_size] for i in range(0, len(full_message), chunk_size)]
         for chunk in chunks:
