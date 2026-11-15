@@ -6,24 +6,29 @@ import feedparser
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-MODEL_ID = "gemini-3.5-flash"
+
+# ਸਹੀ ਮਾਡਲ ਨਾਮ (gemini-2.5-flash)
+MODEL_ID = "gemini-2.5-flash"
 
 # Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ (Low Price < ₹1000) ਵਾਲੇ ਚੋਟੀ ਦੇ ਸਟਾਕਸ
 NIFTY100_LOW_PRICE = [
-    "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS",
-    "ETERNAL.NS", "IRCTC.NS", "POWERGRID.NS", "NTPC.NS", "COALINDIA.NS",
-    "BHEL.NS", "ONGC.NS", "GAIL.NS", "IOC.NS", "BPCL.NS",
-    "VEDL.NS", "HINDALCO.NS", "TATASTEEL.NS", "JSWSTEEL.NS", "DLF.NS",
-    "DABUR.NS", "MARICO.NS", "WIPRO.NS", "TECHM.NS", "BEL.NS",
-    "HAL.NS", "JIOFIN.NS", "ADANIPOWER.NS", "NHPC.NS", "PFC.NS",
-    "RECLTD.NS", "UNIONBANK.NS", "IDFCFIRSTB.NS", "MOTHERSON.NS"
+    "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
+    "IRCTC.NS", "POWERGRID.NS", "NTPC.NS", "COALINDIA.NS", "BHEL.NS",
+    "ONGC.NS", "GAIL.NS", "IOC.NS", "BPCL.NS", "VEDL.NS",
+    "HINDALCO.NS", "TATASTEEL.NS", "JSWSTEEL.NS", "DLF.NS", "DABUR.NS",
+    "MARICO.NS", "WIPRO.NS", "TECHM.NS", "BEL.NS", "HAL.NS",
+    "JIOFIN.NS", "ADANIPOWER.NS", "NHPC.NS", "PFC.NS", "RECLTD.NS",
+    "UNIONBANK.NS", "IDFCFIRSTB.NS", "MOTHERSON.NS"
 ]
 
 def ask_gemini(prompt):
-     host = ".".join(["generativelanguage", "googleapis", "com"])
-    url = f"https://{host}/v1beta/models/{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
+    if not GEMINI_API_KEY:
+        return "Error: GEMINI_API_KEY ਸੈੱਟ ਨਹੀਂ ਕੀਤੀ ਗਈ।"
+    
+    url = f"https://googleapis.com{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
+    
     try:
         response = requests.post(url, headers=headers, json=data, timeout=120)
         res_json = response.json()
@@ -37,8 +42,8 @@ def ask_gemini(prompt):
 
 def get_crypto_prices():
     try:
-        api_base = "https://" + "://coingecko.com"
-        url = f"{api_base}/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true"
+        # ਸਹੀ URL (ਪਹਿਲਾਂ https://:// ਸੀ)
+        url = "https://coingecko.com"
         res = requests.get(url, timeout=10).json()
         btc = f"BTC: ${res['bitcoin']['usd']} ({res['bitcoin']['usd_24h_change']:+.2f}%)"
         eth = f"ETH: ${res['ethereum']['usd']} ({res['ethereum']['usd_24h_change']:+.2f}%)"
@@ -50,13 +55,13 @@ def get_crypto_prices():
 def get_global_and_stock_news():
     headlines = []
     try:
-        news_base = "https://" + "://google.com"
-        rss_macro = f"{news_base}/rss/search?q=stock+market+economy+FII+DII+inflation+India&hl=en-IN&gl=IN&ceid=IN:en"
+        # ਸਹੀ Google News RSS URLs
+        rss_macro = "https://google.com"
         feed1 = feedparser.parse(rss_macro)
         for entry in feed1.entries[:4]:
             headlines.append(f"- [Macro] {entry.title}")
 
-        rss_stocks = f"{news_base}/rss/search?q=NSE+stocks+news+order+win+breakout+India+today&hl=en-IN&gl=IN&ceid=IN:en"
+        rss_stocks = "https://google.com"
         feed2 = feedparser.parse(rss_stocks)
         for entry in feed2.entries[:5]:
             headlines.append(f"- [Stock News] {entry.title}")
@@ -95,13 +100,15 @@ def scan_top5_intraday_and_swing():
         data = yf.download(NIFTY100_LOW_PRICE, period="15d", group_by="ticker", progress=False, threads=True)
         for sym in NIFTY100_LOW_PRICE:
             try:
+                if sym not in data.columns.levels[0]:
+                    continue
                 hist = data[sym].dropna()
                 if len(hist) >= 10:
                     curr_price = float(hist['Close'].iloc[-1])
                     prev_close = float(hist['Close'].iloc[-2])
                     open_price = float(hist['Open'].iloc[-1])
 
-                    if curr_price > 1000:
+                    if curr_price > 1000 or open_price == 0 or prev_close == 0:
                         continue
 
                     day_change_pct = ((curr_price - prev_close) / prev_close) * 100
@@ -133,7 +140,7 @@ def scan_top5_intraday_and_swing():
     except Exception:
         pass
 
-    movers.sort(reverse=True)
+    movers.sort(key=lambda x: x[0], reverse=True)
     top_5 = [info for score, info in movers[:5]]
 
     if not top_5:
@@ -141,20 +148,25 @@ def scan_top5_intraday_and_swing():
     return "\n".join(top_5)
 
 def send_telegram_alert(full_message):
-    try:
-        tg_base = "https://" + "api.telegram.org"
-        url = f"{tg_base}/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        chunk_size = 4000
-        chunks = [full_message[i : i + chunk_size] for i in range(0, len(full_message), chunk_size)]
-        for chunk in chunks:
-            payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ Telegram credentials missing!")
+        print(full_message)
+        return
+
+    url = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage"
+    chunk_size = 4000
+    chunks = [full_message[i : i + chunk_size] for i in range(0, len(full_message), chunk_size)]
+
+    for chunk in chunks:
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
+        try:
             response = requests.post(url, json=payload, timeout=15)
             if response.status_code == 200:
                 print("✅ Telegram Alert Sent Successfully!")
             else:
                 print(f"❌ Telegram Failed: {response.text}")
-    except Exception as e:
-        print(f"Error sending Telegram message: {e}")
+        except Exception as e:
+            print(f"Error sending Telegram message: {e}")
 
 def analyze_everything():
     print("🤖 AI ਮਾਰਕੀਟ, Breaking News, Intraday ਅਤੇ Swing ਸਟਾਕਸ ਸਕੈਨ ਕਰ ਰਿਹਾ ਹੈ...")
@@ -165,44 +177,35 @@ def analyze_everything():
 
     prompt = f"""
     Act as an elite Institutional Hedge Fund Manager, Global Macro Trader, and Price Action Expert.
-    
+
     REAL-TIME DATA COLLECTED:
     1. Crypto (BTC, ETH, BNB): {crypto_info}
     2. Indices & Commodities (Price, 5D High/Low as Support/Resistance): {market_data}
-    3. Nifty 100 Low-Price (<₹1000) Top 5 Live Movers (Tagged with INTRADAY / SWING):
-    {top5_stocks}
-    4. Live Global Macro & Breaking Corporate/Stock News:
-    {market_news}
-    
-    Provide a professional, highly detailed, and actionable trading report in PURE PUNJABI (Gurmukhi script) formatted for Telegram. Include the following sections clearly with emojis:
-    
+    3. Nifty 100 Low-Price (<₹1000) Top 5 Live Movers (Tagged with INTRADAY / SWING): {top5_stocks}
+    4. Live Global Macro & Breaking Corporate/Stock News: {market_news}
+
+    Provide a professional, highly detailed, and actionable trading report in PURE PUNJABI (Gurmukhi script) formatted for Telegram.
+    Include the following sections clearly with emojis:
+
     1. 🌐 ਗਲੋਬਲ ਮਾਰਕੀਟ, ਤਾਜ਼ਾ ਖ਼ਬਰਾਂ & ਸਮਾਰਟ ਮਨੀ (Breaking News & FII Impact):
-       - ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ, ਵੱਡੇ ਖਿਡਾਰੀਆਂ (FII/DII) ਦਾ ਰੁਝਾਨ ਅਤੇ ਜੇਕਰ ਕਿਸੇ ਸਟਾਕ ਬਾਰੇ ਕੋਈ ਤਾਜ਼ਾ ਬ੍ਰੇਕਿੰਗ ਖ਼ਬਰ ਆਈ ਹੈ ਤਾਂ ਉਸਦਾ ਅਸਰ ਦੱਸੋ।
-       - ਕੀ ਮਾਰਕੀਟ ਬੁੱਲਿਸ਼ ਹੈ, ਬੇਅਰਸ਼ ਹੈ, ਜਾਂ ਟਰੈਪ ਜ਼ੋਨ (Trap Zone) ਹੈ?
-    
+    - ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ, ਵੱਡੇ ਖਿਡਾਰੀਆਂ (FII/DII) ਦਾ ਰੁਝਾਨ ਅਤੇ ਜੇਕਰ ਕਿਸੇ ਸਟਾਕ ਬਾਰੇ ਕੋਈ ਤਾਜ਼ਾ ਬ੍ਰੇਕਿੰਗ ਖ਼ਬਰ ਆਈ ਹੈ ਤਾਂ ਉਸਦਾ ਅਸਰ ਦੱਸੋ।
+    - ਕੀ ਮਾਰਕੀਟ ਬੁੱਲਿਸ਼ ਹੈ, ਬੇਅਰਸ਼ ਹੈ, ਜਾਂ ਟਰੈਪ ਜ਼ੋਨ (Trap Zone) ਹੈ?
+
     2. 📊 ਇੰਡੈਕਸ, ਕ੍ਰਿਪਟੋ ਅਤੇ ਕਮੋਡਿਟੀਜ਼ (Nifty, BankNifty, Gold, Silver, Crypto):
-       - ਹਰ ਇੱਕ ਲਈ ਸਾਫ਼-ਸਾਫ਼ ਲਿਖੋ: Action (BUY / SELL / WAIT), Entry Point, Stop-Loss (SL), ਅਤੇ Target.
-       - ਸਪੋਰਟ (Support) ਅਤੇ ਰਜ਼ਿਸਟੈਂਸ (Resistance) ਦੇ ਆਧਾਰ 'ਤੇ ਲੈਵਲ ਦੱਸੋ।
-    
+    - ਹਰ ਇੱਕ ਲਈ ਸਾਫ਼-ਸਾਫ਼ ਲਿਖੋ: Action (BUY / SELL / WAIT), Entry Point, Stop-Loss (SL), ਅਤੇ Target.
+    - ਸਪੋਰਟ (Support) ਅਤੇ ਰਜ਼ਿਸਟੈਂਸ (Resistance) ਦੇ ਆਧਾਰ 'ਤੇ ਲੈਵਲ ਦੱਸੋ।
+
     3. 🎯 ਰਿਟੇਲਰ ਟਰੈਪ ਤੋਂ ਬਚਣ ਦੀ ਸਲਾਹ (Retailer vs Smart Money):
-       - ਆਮ ਲੋਕ ਕਿੱਥੇ ਫਸ ਰਹੇ ਹਨ ਅਤੇ ਅਸਲੀ ਮੂਵ ਕਿੱਥੇ ਆ ਸਕਦੀ ਹੈ?
-    
+    - ਆਮ ਲੋਕ ਕਿੱਥੇ ਫਸ ਰਹੇ ਹਨ ਅਤੇ ਅਸਲੀ ਮੂਵ ਕਿੱਥੇ ਆ ਸਕਦੀ ਹੈ?
+
     4. 🚀 Nifty 100 Top 5 ਲੋਅ-ਪ੍ਰਾਈਸ ਸਟਾਕਸ (Intraday ਅਤੇ Swing Trade ਵੱਖ-ਵੱਖ):
-       - ਜੇਕਰ ਡੇਟਾ ਵਿੱਚ 'NO_STRONG_MOVE' ਲਿਖਿਆ ਹੈ, ਤਾਂ ਸਾਫ਼ ਲਿਖੋ ਕਿ "ਇਸ ਵੇਲੇ ਕਿਸੇ ਵੀ ਸਟਾਕ ਵਿੱਚ ਵੱਡਾ Intraday ਜਾਂ Swing ਸੈੱਟਅੱਪ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਇਸ ਲਈ ਉਡੀਕ (WAIT) ਕਰੋ।"
-       - ਜੇਕਰ ਸਟਾਕਸ ਦਿੱਤੇ ਗਏ ਹਨ, ਤਾਂ ਇਨ੍ਹਾਂ 5 ਸਟਾਕਸ ਨੂੰ ਦੋ ਵੱਖ-ਵੱਖ ਹਿੱਸਿਆਂ ਵਿੱਚ ਵੰਡ ਕੇ ਲਿਖੋ:
-         * ⚡ [ਅੱਜ ਦੇ INTRADAY ਲਈ Best ਸਟਾਕਸ] (ਸਿਰਫ਼ ਅੱਜ 3:15 PM ਤੱਕ ਲਈ)
-         * 🌊 [SWING TRADE ਲਈ Best ਸਟਾਕਸ] (2 ਤੋਂ 7 ਦਿਨਾਂ ਦੇ ਹੋਲਡ ਲਈ)
-       - ਹਰ ਸਟਾਕ ਲਈ ਸਾਫ਼ ਲਿਖੋ:
-         * ਦਿਸ਼ਾ (BUY - ਉੱਪਰ ਵੱਲ / SELL - ਹੇਠਾਂ ਵੱਲ) ਅਤੇ ਕਾਰਨ (ਵਾਲੀਅਮ/ਬ੍ਰੇਕਆਊਟ/ਖ਼ਬਰ)
-         * ਸਹੀ Entry Point (₹)
-         * Stop-Loss (SL) (₹)
-         * Target 1 ਅਤੇ Target 2 (₹)
-    
-    Keep it structured, punchy, professional, and easy to read on mobile. Avoid using markdown asterisks (*) or underscores (_) that might break Telegram formatting.
-    """
+    - ਜੇਕਰ ਡੇਟਾ ਵਿੱਚ 'NO_STRONG_MOVE' ਲਿਖਿਆ ਹੈ, ਤਾਂ ਸਾਫ਼ ਲਿਖੋ ਕਿ "ਇਸ ਵੇਲੇ ਕਿਸੇ ਵੀ ਸਟਾਕ ਵਿੱਚ ਵੱਡਾ Intraday ਜਾਂ Swing ਸੈੱਟਅੱਪ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਇਸ ਲਈ ਉਡੀਕ (WAIT) ਕਰੋ।"
+    - ਜੇਕਰ ਸਟਾਕਸ ਦਿੱਤੇ ਗਏ ਹਨ, ਤਾਂ ਇਨ੍ਹਾਂ 5 ਸਟਾਕਸ ਨੂੰ ਦੋ ਵੱਖ-ਵੱਖ ਹਿੱਸਿਆਂ ਵਿੱਚ ਵੰਡ ਕੇ ਲਿਖੋ:
+      • ⚡ [ਅੱਜ ਦੇ INTRADAY ਲਈ Best ਸਟਾਕਸ] (ਸਿਰਫ਼ ਅੱਜ 3:15 PM ਤੱਕ ਲਈ)
+      • 🌊 [SWING TRADE ਲਈ Best ਸਟਾਕਸ] (2 ਤੋਂ 7 ਦਿਨਾਂ ਦੇ ਹੋਲਡ ਲਈ)
+    - ਹਰ ਸਟਾਕ ਲਈ ਸਾਫ਼ ਲਿਖੋ:
+      • ਦਿਸ਼ਾ (BUY - ਉੱਪਰ ਵੱਲ / SELL - ਹੇਠਾਂ ਵੱਲ) ਅਤੇ ਕਾਰਨ (ਵਾਲੀਅਮ/ਬ੍ਰੇਕਆਊਟ/ਖ਼ਬਰ)
+      • ਸਹੀ Entry Point (₹)
+      • Stop-Loss (SL) (₹)
+      • Target 1 ਅਤੇ Target 2 (₹)
 
-    analysis_text = ask_gemini(prompt)
-    send_telegram_alert("🚀 PRO AI TRADING & SMART MONEY REPORT\n\n" + analysis_text)
-
-if __name__ == "__main__":
-    analyze_everything()
