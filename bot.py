@@ -20,7 +20,7 @@ NIFTY100_LOW_PRICE = [
 ]
 
 def ask_gemini(prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://googleapis.com{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
@@ -36,7 +36,7 @@ def ask_gemini(prompt):
 
 def get_crypto_prices():
     try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true"
+        url = "https://coingecko.com"
         res = requests.get(url, timeout=10).json()
         btc = f"BTC: ${res['bitcoin']['usd']} ({res['bitcoin']['usd_24h_change']:+.2f}%)"
         eth = f"ETH: ${res['ethereum']['usd']} ({res['ethereum']['usd_24h_change']:+.2f}%)"
@@ -45,12 +45,22 @@ def get_crypto_prices():
     except Exception as e:
         return f"Crypto Data Error: {e}"
 
-def get_global_news():
+def get_global_and_stock_news():
+    headlines = []
     try:
-        rss_url = "https://news.google.com/rss/search?q=stock+market+economy+FII+DII+inflation&hl=en-IN&gl=IN&ceid=IN:en"
-        feed = feedparser.parse(rss_url)
-        news_headlines = [f"- {entry.title}" for entry in feed.entries[:6]]
-        return "\n".join(news_headlines) if news_headlines else "No major news right now."
+        # 1. ਮੈਕਰੋ ਅਤੇ FII/DII ਖ਼ਬਰਾਂ
+        rss_macro = "https://google.com"
+        feed1 = feedparser.parse(rss_macro)
+        for entry in feed1.entries[:4]:
+            headlines.append(f"- [Macro] {entry.title}")
+            
+        # 2. ਦਿਨ ਵੇਲੇ ਆਉਣ ਵਾਲੀਆਂ ਕੰਪਨੀਆਂ ਅਤੇ ਬ੍ਰੇਕਿੰਗ ਸਟਾਕ ਖ਼ਬਰਾਂ
+        rss_stocks = "https://google.com"
+        feed2 = feedparser.parse(rss_stocks)
+        for entry in feed2.entries[:5]:
+            headlines.append(f"- [Stock News] {entry.title}")
+            
+        return "\n".join(headlines) if headlines else "No major breaking news right now."
     except Exception as e:
         return f"News Fetch Error: {e}"
 
@@ -78,49 +88,61 @@ def get_market_technicals():
             continue
     return " | ".join(report) if report else "Market data unavailable"
 
-def scan_top5_low_price_movers():
+def scan_top5_intraday_and_swing():
     movers = []
-    for sym in NIFTY100_LOW_PRICE:
-        try:
-            ticker = yf.Ticker(sym)
-            hist = ticker.history(period="10d")
-            if len(hist) >= 5:
-                curr_price = hist['Close'].iloc[-1]
-                prev_close = hist['Close'].iloc[-2]
-                
-                # ਸਿਰਫ਼ ₹1000 ਤੋਂ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰ ਹੀ ਰੱਖੋ
-                if curr_price > 1000:
-                    continue
-                
-                change_pct = ((curr_price - prev_close) / prev_close) * 100
-                avg_vol = hist['Volume'].iloc[:-1].mean()
-                curr_vol = hist['Volume'].iloc[-1]
-                vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
-                
-                high_5d = hist['High'].iloc[-5:].max()
-                low_5d = hist['Low'].iloc[-5:].min()
-                
-                # ਮੂਵ ਸਕੋਰ: ਵਾਲੀਅਮ ਸਪਾਈਕ + ਕੀਮਤ ਵਿੱਚ ਹਲਚਲ + ਬ੍ਰੇਕਆਊਟ ਨੇੜੇ
-                near_breakout = (curr_price >= high_5d * 0.985) or (curr_price <= low_5d * 1.015)
-                if vol_ratio >= 1.15 or abs(change_pct) >= 1.2 or near_breakout:
-                    score = (vol_ratio * 2) + abs(change_pct) + (1.5 if near_breakout else 0)
-                    clean_name = sym.replace(".NS", "")
-                    info = f"{clean_name}: ₹{curr_price:.2f} ({change_pct:+.2f}%) | Vol: {vol_ratio:.1f}x | 5D Support: ₹{low_5d:.2f}, Resistance: ₹{high_5d:.2f}"
-                    movers.append((score, info))
-        except Exception:
-            continue
-            
-    # ਸਭ ਤੋਂ ਵੱਧ ਮੂਵ ਵਾਲੇ Top 5 ਸਟਾਕ ਚੁਣੋ
+    try:
+        data = yf.download(NIFTY100_LOW_PRICE, period="15d", group_by="ticker", progress=False, threads=True)
+        for sym in NIFTY100_LOW_PRICE:
+            try:
+                hist = data[sym].dropna()
+                if len(hist) >= 10:
+                    curr_price = float(hist['Close'].iloc[-1])
+                    prev_close = float(hist['Close'].iloc[-2])
+                    open_price = float(hist['Open'].iloc[-1])
+                    
+                    if curr_price > 1000:
+                        continue
+                        
+                    day_change_pct = ((curr_price - prev_close) / prev_close) * 100
+                    intraday_move_pct = ((curr_price - open_price) / open_price) * 100
+                    
+                    avg_vol = float(hist['Volume'].iloc[:-1].mean())
+                    curr_vol = float(hist['Volume'].iloc[-1])
+                    vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
+                    
+                    high_5d = float(hist['High'].iloc[-5:].max())
+                    low_5d = float(hist['Low'].iloc[-5:].min())
+                    high_15d = float(hist['High'].max())
+                    low_15d = float(hist['Low'].min())
+                    
+                    # ਟ੍ਰੇਡ ਕਿਸਮ ਦੀ ਪਛਾਣ (Intraday vs Swing)
+                    is_intraday = (vol_ratio >= 1.25) or (abs(intraday_move_pct) >= 1.0)
+                    is_swing = (curr_price >= high_15d * 0.985) or (curr_price <= low_15d * 1.015)
+                    
+                    if is_intraday or is_swing or abs(day_change_pct) >= 1.2:
+                        score = (vol_ratio * 2) + abs(day_change_pct) + (1.5 if is_swing else 0)
+                        clean_name = sym.replace(".NS", "")
+                        tag = "BOTH (Intraday & Swing)" if (is_intraday and is_swing) else ("SWING" if is_swing else "INTRADAY")
+                        info = (
+                            f"{clean_name} [{tag}]: Price ₹{curr_price:.2f} (Day: {day_change_pct:+.2f}%, Open-to-Now: {intraday_move_pct:+.2f}%) | "
+                            f"Vol: {vol_ratio:.1f}x | 5D Range: ₹{low_5d:.2f}-₹{high_5d:.2f} | 15D Range: ₹{low_15d:.2f}-₹{high_15d:.2f}"
+                        )
+                        movers.append((score, info))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     movers.sort(key=lambda x: x[0], reverse=True)
     top_5 = [item[1] for item in movers[:5]]
     
     if not top_5:
-        return "NO_STRONG_MOVE: ਇਸ ਵੇਲੇ Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰਾਂ ਵਿੱਚ ਕੋਈ ਵੱਡਾ ਬ੍ਰੇਕਆਊਟ ਜਾਂ ਤੇਜ਼ ਮੂਵ ਨਹੀਂ ਦਿਖ ਰਹੀ।"
+        return "NO_STRONG_MOVE: ਇਸ ਵੇਲੇ Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰਾਂ ਵਿੱਚ ਕੋਈ ਵੱਡਾ Intraday ਜਾਂ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ।"
     return "\n".join(top_5)
 
 def send_telegram_alert(full_message):
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        url = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage"
         chunk_size = 4000
         chunks = [full_message[i : i + chunk_size] for i in range(0, len(full_message), chunk_size)]
         for chunk in chunks:
@@ -134,11 +156,11 @@ def send_telegram_alert(full_message):
         print(f"Error sending Telegram message: {e}")
 
 def analyze_everything():
-    print("🤖 AI ਮਾਰਕੀਟ ਅਤੇ Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਚਾਰਟ ਸਕੈਨ ਕਰ ਰਿਹਾ ਹੈ...")
+    print("🤖 AI ਮਾਰਕੀਟ, Breaking News, Intraday ਅਤੇ Swing ਸਟਾਕਸ ਸਕੈਨ ਕਰ ਰਿਹਾ ਹੈ...")
     crypto_info = get_crypto_prices()
     market_data = get_market_technicals()
-    market_news = get_global_news()
-    top5_stocks = scan_top5_low_price_movers()
+    market_news = get_global_and_stock_news()
+    top5_stocks = scan_top5_intraday_and_swing()
 
     prompt = f"""
     Act as an elite Institutional Hedge Fund Manager, Global Macro Trader, and Price Action Expert.
@@ -146,16 +168,16 @@ def analyze_everything():
     REAL-TIME DATA COLLECTED:
     1. Crypto (BTC, ETH, BNB): {crypto_info}
     2. Indices & Commodities (Price, 5D High/Low as Support/Resistance): {market_data}
-    3. Nifty 100 Low-Price (<₹1000) High-Move Breakout Scanner (Top 5 Filtered):
+    3. Nifty 100 Low-Price (<₹1000) Top 5 Live Movers (Tagged with INTRADAY / SWING):
     {top5_stocks}
-    4. Live Global & Economic News (Triggers, FII/DII Sentiment, Macro Factors):
+    4. Live Global Macro & Breaking Corporate/Stock News:
     {market_news}
     
     Provide a professional, highly detailed, and actionable trading report in PURE PUNJABI (Gurmukhi script) formatted for Telegram. Include the following sections clearly with emojis:
     
-    1. 🌐 ਗਲੋਬਲ ਮਾਰਕੀਟ & ਬਿਗ ਪਲੇਅਰ ਫੁੱਟਪ੍ਰਿੰਟ (Smart Money & News Impact):
-       - ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ ਅਤੇ ਵੱਡੇ ਖਿਡਾਰੀਆਂ (Institutions/FII) ਦਾ ਰੁਝਾਨ ਮਾਰਕੀਟ 'ਤੇ ਕੀ ਅਸਰ ਪਾ ਰਿਹਾ ਹੈ?
-       - ਕੀ ਇਹ ਮਾਰਕੀਟ ਬੁੱਲਿਸ਼ ਹੈ, ਬੇਅਰਸ਼ ਹੈ, ਜਾਂ ਟਰੈਪ (Trap Zone) ਹੈ?
+    1. 🌐 ਗਲੋਬਲ ਮਾਰਕੀਟ, ਤਾਜ਼ਾ ਖ਼ਬਰਾਂ & ਸਮਾਰਟ ਮਨੀ (Breaking News & FII Impact):
+       - ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ, ਵੱਡੇ ਖਿਡਾਰੀਆਂ (FII/DII) ਦਾ ਰੁਝਾਨ ਅਤੇ ਜੇਕਰ ਕਿਸੇ ਸਟਾਕ ਬਾਰੇ ਕੋਈ ਤਾਜ਼ਾ ਬ੍ਰੇਕਿੰਗ ਖ਼ਬਰ ਆਈ ਹੈ ਤਾਂ ਉਸਦਾ ਅਸਰ ਦੱਸੋ।
+       - ਕੀ ਮਾਰਕੀਟ ਬੁੱਲਿਸ਼ ਹੈ, ਬੇਅਰਸ਼ ਹੈ, ਜਾਂ ਟਰੈਪ ਜ਼ੋਨ (Trap Zone) ਹੈ?
     
     2. 📊 ਇੰਡੈਕਸ, ਕ੍ਰਿਪਟੋ ਅਤੇ ਕਮੋਡਿਟੀਜ਼ (Nifty, BankNifty, Gold, Silver, Crypto):
        - ਹਰ ਇੱਕ ਲਈ ਸਾਫ਼-ਸਾਫ਼ ਲਿਖੋ: Action (BUY / SELL / WAIT), Entry Point, Stop-Loss (SL), ਅਤੇ Target.
@@ -164,10 +186,13 @@ def analyze_everything():
     3. 🎯 ਰਿਟੇਲਰ ਟਰੈਪ ਤੋਂ ਬਚਣ ਦੀ ਸਲਾਹ (Retailer vs Smart Money):
        - ਆਮ ਲੋਕ ਕਿੱਥੇ ਫਸ ਰਹੇ ਹਨ ਅਤੇ ਅਸਲੀ ਮੂਵ ਕਿੱਥੇ ਆ ਸਕਦੀ ਹੈ?
     
-    4. 🚀 Nifty 100 Top 5 ਲੋਅ-ਪ੍ਰਾਈਸ ਮੂਵਰ ਸਟਾਕਸ (Breakout & Volume Alert):
-       - ਜੇਕਰ ਡੇਟਾ ਵਿੱਚ 'NO_STRONG_MOVE' ਲਿਖਿਆ ਹੈ, ਤਾਂ ਸਾਫ਼ ਲਿਖੋ ਕਿ "ਇਸ ਵੇਲੇ ਕਿਸੇ ਵੀ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰ ਵਿੱਚ ਵੱਡੀ ਮੂਵ ਜਾਂ ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਇਸ ਲਈ ਉਡੀਕ (WAIT) ਕਰੋ।"
-       - ਜੇਕਰ ਸਟਾਕਸ ਦਿੱਤੇ ਗਏ ਹਨ, ਤਾਂ ਸਿਰਫ਼ ਉਨ੍ਹਾਂ 5 ਸਟਾਕਸ ਦਾ ਹੀ ਵਿਸ਼ਲੇਸ਼ਣ ਕਰੋ ਅਤੇ ਹਰ ਇੱਕ ਲਈ ਸਾਫ਼ ਲਿਖੋ:
-         * ਦਿਸ਼ਾ (BUY - ਉੱਪਰ ਵੱਲ / SELL - ਹੇਠਾਂ ਵੱਲ) ਅਤੇ ਕਾਰਨ (ਵਾਲੀਅਮ/ਬ੍ਰੇਕਆਊਟ)
+    4. 🚀 Nifty 100 Top 5 ਲੋਅ-ਪ੍ਰਾਈਸ ਸਟਾਕਸ (Intraday ਅਤੇ Swing Trade ਵੱਖ-ਵੱਖ):
+       - ਜੇਕਰ ਡੇਟਾ ਵਿੱਚ 'NO_STRONG_MOVE' ਲਿਖਿਆ ਹੈ, ਤਾਂ ਸਾਫ਼ ਲਿਖੋ ਕਿ "ਇਸ ਵੇਲੇ ਕਿਸੇ ਵੀ ਸਟਾਕ ਵਿੱਚ ਵੱਡਾ Intraday ਜਾਂ Swing ਸੈੱਟਅੱਪ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਇਸ ਲਈ ਉਡੀਕ (WAIT) ਕਰੋ।"
+       - ਜੇਕਰ ਸਟਾਕਸ ਦਿੱਤੇ ਗਏ ਹਨ, ਤਾਂ ਇਨ੍ਹਾਂ 5 ਸਟਾਕਸ ਨੂੰ ਦੋ ਵੱਖ-ਵੱਖ ਹਿੱਸਿਆਂ ਵਿੱਚ ਵੰਡ ਕੇ ਲਿਖੋ:
+         * ⚡ [ਅੱਜ ਦੇ INTRADAY ਲਈ Best ਸਟਾਕਸ] (ਸਿਰਫ਼ ਅੱਜ 3:15 PM ਤੱਕ ਲਈ)
+         * 🌊 [SWING TRADE ਲਈ Best ਸਟਾਕਸ] (2 ਤੋਂ 7 ਦਿਨਾਂ ਦੇ ਹੋਲਡ ਲਈ)
+       - ਹਰ ਸਟਾਕ ਲਈ ਸਾਫ਼ ਲਿਖੋ:
+         * ਦਿਸ਼ਾ (BUY - ਉੱਪਰ ਵੱਲ / SELL - ਹੇਠਾਂ ਵੱਲ) ਅਤੇ ਕਾਰਨ (ਵਾਲੀਅਮ/ਬ੍ਰੇਕਆਊਟ/ਖ਼ਬਰ)
          * ਸਹੀ Entry Point (₹)
          * Stop-Loss (SL) (₹)
          * Target 1 ਅਤੇ Target 2 (₹)
@@ -176,7 +201,3 @@ def analyze_everything():
     """
 
     analysis_text = ask_gemini(prompt)
-    send_telegram_alert("🚀 PRO AI TRADING & SMART MONEY REPORT\n\n" + analysis_text)
-
-if __name__ == "__main__":
-    analyze_everything()
