@@ -27,10 +27,17 @@ def get_live_market_status():
     current_minutes = now.hour * 60 + now.minute
 
     is_weekday = weekday < 5
+    
+    # NSE Stocks / Index Time: 9:15 AM (555 min) to 3:30 PM (930 min)
     nse_live = is_weekday and (555 <= current_minutes <= 930)
+    
+    # MCX Time: 9:00 AM (540 min) to 11:30 PM (1410 min)
     mcx_live = is_weekday and (540 <= current_minutes <= 1410)
+    
+    # Crypto is 24/7 (Always True)
+    crypto_live = True
 
-    return now.strftime("%d-%b-%Y %I:%M %p IST"), nse_live, mcx_live
+    return now.strftime("%d-%b-%Y %I:%M %p IST"), nse_live, mcx_live, crypto_live
 
 def ask_gemini(prompt):
     api_key = (GEMINI_API_KEY or "").strip()
@@ -144,7 +151,7 @@ def scan_top5_smart_money_only():
                     vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
 
                     high_5d = float(hist['High'].iloc[-5:].max())
-                    low_5d = float(hist['High'].iloc[-5:].min())
+                    low_5d = float(hist['Low'].iloc[-5:].min())
                     high_15d = float(hist['High'].max())
                     low_15d = float(hist['Low'].min())
 
@@ -210,30 +217,27 @@ def send_telegram_alert(full_message):
         print("Telegram Status:", res.status_code, res.text)
 
 def analyze_everything():
-    time_str, nse_live, mcx_live = get_live_market_status()
+    time_str, nse_live, mcx_live, crypto_live = get_live_market_status()
 
-    # ਜੇਕਰ ਮਾਰਕੀਟ ਬੰਦ ਹੈ, ਤਾਂ ਅਲਰਟ ਨਹੀਂ ਭੇਜੇਗਾ
-    if not nse_live and not mcx_live:
-        print(f"[{time_str}] Market is CLOSED. No alert sent.")
-        return
-
-    crypto_info = get_crypto_prices()
+    crypto_info = get_crypto_prices() if crypto_live else ""
     live_market_data = get_live_indices_and_mcx(nse_live, mcx_live)
     world_news = get_world_comprehensive_news(nse_live, mcx_live)
     top5_stocks = scan_top5_smart_money_only() if nse_live else ""
 
-    active_markets = ["Crypto (24/7 Live)"]
+    active_markets = []
+    if crypto_live:
+        active_markets.append("Crypto (24/7 Live)")
     if mcx_live:
         active_markets.append("MCX Commodity (Live)")
     if nse_live:
-        active_markets.append("NSE Indian Stocks (Live)")
+        active_markets.append("NSE Indian Stocks & Index (Live)")
 
     mcx_intra_line = "- MCX Intraday (Gold, Silver): Action | Entry | Target | Stop-Loss (SL)" if mcx_live else ""
     nse_idx_intra_line = "- Index Intraday (Nifty 50, Bank Nifty): Action | Entry | Target | Stop-Loss (SL)" if nse_live else ""
     nse_stk_intra_line = "- Nifty 100 Top 5 (<₹1000) INTRADAY: ਜੇ ਕੋਈ 100% ਪੱਕਾ ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ ਤਾਂ ਸਾਫ਼ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Intraday ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ, Fake Move ਤੋਂ ਬਚੋ (WAIT)'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | Smart Money ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
 
     mcx_swing_line = "- MCX Swing (Gold, Silver): Action | Entry Zone | Target | Stop-Loss (SL)" if mcx_live else ""
-    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Target | Stop-Loss (SL)" if nse_live else ""
+    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Target | Stop-Loss (SL)" if mcx_live else ""
     nse_stk_swing_line = "- Nifty 100 Top 5 (<₹1000) SWING: ਜੇ ਕੋਈ ਪੱਕਾ ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਉਡੀਕ ਕਰੋ'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | ਅਸਲੀ ਬ੍ਰੇਕਆਊਟ ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
 
     prompt = (
@@ -241,9 +245,10 @@ def analyze_everything():
         f"Current Time: {time_str}\n"
         f"ACTIVE LIVE MARKETS RIGHT NOW: {', '.join(active_markets)}\n\n"
         "STRICT CAPITAL PROTECTION & 100% VERIFIED TRADING RULES:\n"
-        "1. NEVER force a trade! If volume is low, chart is sideways, or a Fake Breakout / Liquidity Sweep is detected, do NOT give a BUY/SELL call—strictly mark it as 'WAIT / NO TRADE (Fake Move Risk)'.\n"
-        "2. Provide EXACT Entry, Target, and Stop-Loss (SL) for every valid setup. If a trade is not 100% high-conviction, reject it.\n"
-        "3. Keep INTRADAY and SWING trades strictly separated.\n\n"
+        "1. ONLY report on currently active markets as per their live timings. Do NOT give Indian Stock/Index calls when NSE is closed.\n"
+        "2. NEVER force a trade! If volume is low, chart is sideways, or a Fake Breakout / Liquidity Sweep is detected, do NOT give a BUY/SELL call—strictly mark it as 'WAIT / NO TRADE (Fake Move Risk)'.\n"
+        "3. Provide EXACT Entry, Target, and Stop-Loss (SL) for every valid setup. If a trade is not 100% high-conviction, reject it.\n"
+        "4. Keep INTRADAY and SWING trades strictly separated.\n\n"
         "LIVE DATA FEED:\n"
         f"- Crypto (24/7 Live): {crypto_info}\n"
         f"- Live Indices/MCX: {live_market_data}\n"
