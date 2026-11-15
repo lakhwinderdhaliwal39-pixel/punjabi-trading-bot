@@ -8,7 +8,6 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 MODEL_ID = "gemini-3.5-flash"
 
-# Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ (Low Price < ₹1000) ਵਾਲੇ ਚੋਟੀ ਦੇ ਸਟਾਕਸ
 NIFTY100_LOW_PRICE = [
     "TATAMOTORS.NS", "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS",
     "ETERNAL.NS", "IRCTC.NS", "POWERGRID.NS", "NTPC.NS", "COALINDIA.NS",
@@ -27,9 +26,9 @@ def ask_gemini(prompt):
         response = requests.post(url, headers=headers, json=data, timeout=120)
         res_json = response.json()
         if 'candidates' in res_json and len(res_json['candidates']) > 0:
-            candidate = res_json['candidates'][0]
+            candidate = res_json['candidates']
             if 'content' in candidate and 'parts' in candidate['content']:
-                return candidate['content']['parts'][0]['text']
+                return candidate['content']['parts']['text']
         return f"Gemini API Raw Response: {res_json}"
     except Exception as e:
         return f"Gemini API Error: {e}"
@@ -48,13 +47,11 @@ def get_crypto_prices():
 def get_global_and_stock_news():
     headlines = []
     try:
-        # 1. ਮੈਕਰੋ ਅਤੇ FII/DII ਖ਼ਬਰਾਂ
         rss_macro = "https://google.com"
         feed1 = feedparser.parse(rss_macro)
         for entry in feed1.entries[:4]:
             headlines.append(f"- [Macro] {entry.title}")
             
-        # 2. ਦਿਨ ਵੇਲੇ ਆਉਣ ਵਾਲੀਆਂ ਕੰਪਨੀਆਂ ਅਤੇ ਬ੍ਰੇਕਿੰਗ ਸਟਾਕ ਖ਼ਬਰਾਂ
         rss_stocks = "https://google.com"
         feed2 = feedparser.parse(rss_stocks)
         for entry in feed2.entries[:5]:
@@ -115,7 +112,6 @@ def scan_top5_intraday_and_swing():
                     high_15d = float(hist['High'].max())
                     low_15d = float(hist['Low'].min())
                     
-                    # ਟ੍ਰੇਡ ਕਿਸਮ ਦੀ ਪਛਾਣ (Intraday vs Swing)
                     is_intraday = (vol_ratio >= 1.25) or (abs(intraday_move_pct) >= 1.0)
                     is_swing = (curr_price >= high_15d * 0.985) or (curr_price <= low_15d * 1.015)
                     
@@ -133,8 +129,8 @@ def scan_top5_intraday_and_swing():
     except Exception:
         pass
 
-    movers.sort(key=lambda x: x[0], reverse=True)
-    top_5 = [item[1] for item in movers[:5]]
+    movers.sort(key=lambda x: x, reverse=True)
+    top_5 = [item for item in movers[:5]]
     
     if not top_5:
         return "NO_STRONG_MOVE: ਇਸ ਵੇਲੇ Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰਾਂ ਵਿੱਚ ਕੋਈ ਵੱਡਾ Intraday ਜਾਂ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ।"
@@ -201,3 +197,7 @@ def analyze_everything():
     """
 
     analysis_text = ask_gemini(prompt)
+    send_telegram_alert("🚀 PRO AI TRADING & SMART MONEY REPORT\n\n" + analysis_text)
+
+if __name__ == "__main__":
+    analyze_everything()
