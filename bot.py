@@ -208,3 +208,67 @@ def send_telegram_alert(full_message):
     url = f"https://telegram.org{TELEGRAM_BOT_TOKEN}/sendMessage"
     chunks = [full_message[i : i + 4000] for i in range(0, len(full_message), 4000)]
     for chunk in chunks:
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": chunk}
+        requests.post(url, json=payload, timeout=15)
+
+def analyze_everything():
+    time_str, nse_live, mcx_live = get_live_market_status()
+    crypto_info = get_crypto_prices()
+    live_market_data = get_live_indices_and_mcx(nse_live, mcx_live)
+    world_news = get_world_comprehensive_news(nse_live, mcx_live)
+    top5_stocks = scan_top5_smart_money_only() if nse_live else ""
+
+    active_markets = ["Crypto (24/7 Live)"]
+    if mcx_live:
+        active_markets.append("MCX Commodity (Live)")
+    if nse_live:
+        active_markets.append("NSE Indian Stocks (Live)")
+
+    prompt = f"""
+    Act as an elite Institutional Smart Money Trader, Liquidity Hunter, and Risk Manager.
+    Current Time: {time_str}
+    ACTIVE LIVE MARKETS RIGHT NOW: {', '.join(active_markets)}
+
+    STRICT ZERO-GUESSING & CAPITAL PROTECTION RULES:
+    1. ONLY report on CURRENTLY LIVE markets ({', '.join(active_markets)}). Do NOT mention closed markets at all.
+    2. NEVER force a trade! If any coin, index, commodity, or stock shows low volume, sideways chop, or a Fake Breakout (liquidity sweep), DO NOT give a BUY/SELL call—strictly mark it as "WAIT / NO TRADE (Fake Move Risk)".
+    3. Only recommend trades with high institutional conviction (strong volume + clean structure).
+    4. Keep INTRADAY and SWING TRADE strictly separated.
+
+    LIVE DATA FEED:
+    - Crypto (24/7 Live): {crypto_info}
+    {f"- Live Indices/MCX: {live_market_data}" if live_market_data else ""}
+    {f"- Nifty 100 (<₹1000) Smart Money Scan:\n{top5_stocks}" if top5_stocks else ""}
+    - Global Major & Minor News Scan:
+    {world_news}
+
+    Output the report in PURE PUNJABI (Gurmukhi script) for Telegram:
+
+    🕵️‍♂️ 1. ਵੱਡੇ ਖਿਡਾਰੀਆਂ ਦੀ ਚਾਲ, ਗਲੋਬਲ ਨਿਊਜ਼ & Fake Breakout ਚੇਤਾਵਨੀ
+    - ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ ਅਤੇ ਵੱਡੇ ਖਿਡਾਰੀਆਂ (FIIs / Whales) ਦੀ ਅਸਲੀ ਪੋਜ਼ੀਸ਼ਨ।
+    - ਕਿੱਥੇ Fake Breakout (ਨਕਲੀ ਤੇਜ਼ੀ/ਮੰਦੀ) ਬਣਾ ਕੇ ਰਿਟੇਲਰਾਂ ਦਾ Stop-Loss ਖਾਧਾ ਜਾ ਰਿਹਾ ਹੈ (ਜੋ ਸਟਾਕ ਜਾਂ ਕ੍ਰਿਪਟੋ ਟਰੈਪ ਵਿੱਚ ਹਨ, ਉਨ੍ਹਾਂ ਤੋਂ ਦੂਰ ਰਹਿਣ ਦੀ ਚੇਤਾਵਨੀ)।
+
+    ══════════════════════════
+    ⚡ ਭਾਗ A: INTRADAY TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਸੈੱਟਅੱਪ - ਅੱਜ ਲਈ)
+    ══════════════════════════
+    - Crypto Intraday (BTC, ETH, BNB, SOL): ਸਿਰਫ਼ ਪੱਕੇ ਸੈੱਟਅੱਪ ਲਈ Action | Entry | Exit/Target | Stop-Loss (SL) ਲਿਖੋ (ਕਮਜ਼ੋਰ ਲਈ WAIT ਲਿਖੋ)।
+    { "- MCX Intraday (Gold, Silver): Action | Entry | Exit/Target | Stop-Loss (SL)" if mcx_live else "" }
+    { "- Index Intraday (Nifty 50, Bank Nifty): Action | Entry | Exit/Target | Stop-Loss (SL)" if nse_live else "" }
+    { "- Nifty 100 Top 5 (<₹1000) INTRADAY (3:15 PM ਤੱਕ): ਜੇ NO_100_PERCENT_CONFIRMED_INTRADAY ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Intraday ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ, Fake Move ਤੋਂ ਬਚੋ (WAIT)'। ਨਹੀਂ ਤਾਂ ਸਿਰਫ਼ ਪੱਕੇ ਸਟਾਕਸ ਲਈ: ਦਿਸ਼ਾ | Smart Money ਕਾਰਨ | Entry (₹) | Target 1 & 2 (₹) | Stop-Loss (₹)" if nse_live else "" }
+
+    ══════════════════════════
+    🌊 ਭਾਗ B: SWING TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਬ੍ਰੇਕਆਊਟ - 2 ਤੋਂ 10 ਦਿਨ)
+    ══════════════════════════
+    - Crypto Swing (BTC, ETH, BNB, SOL): Action | Entry Zone | Swing Target | Stop-Loss (SL)
+    { "- MCX Swing (Gold, Silver): Action | Entry Zone | Swing Target | Stop-Loss (SL)" if mcx_live else "" }
+    { "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Swing Target | Stop-Loss (SL)" if nse_live else "" }
+    { "- Nifty 100 Top 5 (<₹1000) SWING (2-10 ਦਿਨ): ਜੇ NO_100_PERCENT_CONFIRMED_SWING ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਉਡੀਕ ਕਰੋ'। ਨਹੀਂ ਤਾਂ ਸਿਰਫ਼ ਪੱਕੇ ਸਟਾਕਸ ਲਈ: ਦਿਸ਼ਾ | ਅਸਲੀ ਬ੍ਰੇਕਆਊਟ ਕਾਰਨ | Entry (₹) | Target 1 & 2 (₹) | Stop-Loss (₹)" if nse_live else "" }
+
+    Strictly avoid markdown asterisks (*) or underscores (_) that break Telegram formatting.
+    """
+
+    analysis_text = ask_gemini(prompt)
+    send_telegram_alert(f"🛡️ SMART MONEY & VERIFIED SETUP REPORT ({time_str})\n\n" + analysis_text)
+
+if __name__ == "__main__":
+    analyze_everything()
