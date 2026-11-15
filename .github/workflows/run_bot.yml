@@ -2,9 +2,9 @@ name: Hourly Trading Bot
 
 on:
   schedule:
-    - cron: '45 3 * * 1-5'   # ਸਵੇਰੇ 9:15 AM IST (ਸੋਮਵਾਰ ਤੋਂ ਸ਼ੁੱਕਰਵਾਰ ਮਾਰਕੀਟ ਓਪਨ ਅਲਰਟ)
+    - cron: '45 3 * * 1-5'    # ਸਵੇਰੇ 9:15 AM IST (ਸੋਮਵਾਰ ਤੋਂ ਸ਼ੁੱਕਰਵਾਰ ਮਾਰਕੀਟ ਓਪਨ ਅਲਰਟ)
     - cron: '0 * * * *'      # ਹਰ 1 ਘੰਟੇ ਬਾਅਦ ਆਪਣੇ-ਆਪ ਚੱਲੇਗਾ
-  workflow_dispatch:         # ਤੁਸੀਂ ਜਦੋਂ ਮਰਜ਼ੀ ਹੱਥੀਂ ਵੀ ਚਲਾ ਸਕਦੇ ਹੋ
+  workflow_dispatch:           # ਤੁਸੀਂ ਜਦੋਂ ਮਰਜ਼ੀ ਹੱਥੀਂ ਵੀ ਚਲਾ ਸਕਦੇ ਹੋ
 
 jobs:
   run-bot:
@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install requests yfinance feedparser
+        run: pip install requests yfinance feedparser pytz
 
       - name: Run Trading Bot
         env:
