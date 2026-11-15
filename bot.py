@@ -8,7 +8,7 @@ import pytz
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-MODEL_ID = "gemini-1.5-flash"  # ਇੱਥੇ ਤੁਸੀਂ gemini-3.5-flash ਵੀ ਰੱਖ ਸਕਦੇ ਹੋ
+MODEL_ID = "gemini-2.5-flash"
 
 NIFTY100_LOW_PRICE = [
     "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
