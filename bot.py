@@ -8,7 +8,7 @@ import pytz
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "gemini-1.5-flash"  # ਇੱਥੇ ਤੁਸੀਂ gemini-3.5-flash ਵੀ ਰੱਖ ਸਕਦੇ ਹੋ
 
 NIFTY100_LOW_PRICE = [
     "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
@@ -151,7 +151,7 @@ def scan_top5_smart_money_only():
                     vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
 
                     high_5d = float(hist['High'].iloc[-5:].max())
-                    low_5d = float(hist['Low'].iloc[-5:].min())
+                    low_5d = float(hist['High'].iloc[-5:].min())
                     high_15d = float(hist['High'].max())
                     low_15d = float(hist['Low'].min())
 
@@ -237,7 +237,7 @@ def analyze_everything():
     nse_stk_intra_line = "- Nifty 100 Top 5 (<₹1000) INTRADAY: ਜੇ ਕੋਈ 100% ਪੱਕਾ ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ ਤਾਂ ਸਾਫ਼ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Intraday ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ, Fake Move ਤੋਂ ਬਚੋ (WAIT)'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | Smart Money ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
 
     mcx_swing_line = "- MCX Swing (Gold, Silver): Action | Entry Zone | Target | Stop-Loss (SL)" if mcx_live else ""
-    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Target | Stop-Loss (SL)" if mcx_live else ""
+    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Target | Stop-Loss (SL)" if nse_live else ""
     nse_stk_swing_line = "- Nifty 100 Top 5 (<₹1000) SWING: ਜੇ ਕੋਈ ਪੱਕਾ ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਉਡੀਕ ਕਰੋ'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | ਅਸਲੀ ਬ੍ਰੇਕਆਊਟ ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
 
     prompt = (
