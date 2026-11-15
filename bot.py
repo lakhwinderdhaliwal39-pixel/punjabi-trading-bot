@@ -8,7 +8,7 @@ import pytz
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-MODEL_ID = "gemini-3.8-flash"
+MODEL_ID = "gemini-2.0-flash"  # ਸਭ ਤੋਂ ਤੇਜ਼ ਅਤੇ ਸਟੇਬਲ ਮਾਡਲ
 
 NIFTY100_LOW_PRICE = [
     "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
@@ -45,15 +45,19 @@ def ask_gemini(prompt):
 
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
-    try:
-        # Timeout ਵਧਾ ਕੇ 180 ਸਕਿੰਟ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ
-        response = requests.post(url, headers=headers, json=data, timeout=180)
-        res_json = response.json()
-        if 'candidates' in res_json and len(res_json['candidates']) > 0:
-            return res_json['candidates'][0]['content']['parts'][0]['text']
-        return f"Gemini API Raw Response: {res_json}"
-    except Exception as e:
-        return f"Gemini API Error: {e}"
+    
+    # 2 ਵਾਰ ਕੋਸ਼ਿਸ਼ ਕਰਨ ਦਾ ਲੌ직ਕ (Retry Mechanism) ਤਾਂ ਜੋ ਜੇ ਪਹਿਲੀ ਵਾਰ ਟਾਈਮਆਊਟ ਹੋਵੇ ਤਾਂ ਦੂਜੀ ਵਾਰ ਚੱਲ ਪਵੇ
+    for attempt in range(2):
+        try:
+            response = requests.post(url, headers=headers, json=data, timeout=120)
+            res_json = response.json()
+            if 'candidates' in res_json and len(res_json['candidates']) > 0:
+                return res_json['candidates'][0]['content']['parts'][0]['text']
+            return f"Gemini API Raw Response: {res_json}"
+        except Exception as e:
+            if attempt == 1:
+                return f"Gemini API Error: {e}"
+    return "Gemini API Error: Max retries reached."
 
 def get_crypto_prices():
     try:
@@ -83,7 +87,7 @@ def get_world_comprehensive_news(nse_live, mcx_live):
         try:
             rss_url = f"{rss_base}{q}&hl=en-IN&gl=IN&ceid=IN:en"
             feed = feedparser.parse(rss_url)
-            for entry in feed.entries[:4]:
+            for entry in feed.entries[:3]: # ਹੈੱਡਲਾਈਨਜ਼ ਘਟਾ ਕੇ 3 ਕਰ ਦਿੱਤੀਆਂ ਹਨ ਤਾਂ ਜੋ ਪ੍ਰੌਮਪਟ ਛੋਟਾ ਰਹੇ
                 all_headlines.append(f"[{category}] {entry.title}")
         except Exception:
             continue
@@ -113,12 +117,8 @@ def get_live_indices_and_mcx(nse_live, mcx_live):
                 day_high = hist['High'].iloc[-1]
                 day_low = hist['Low'].iloc[-1]
                 change_pct = ((curr_price - prev_close) / prev_close) * 100
-                high_5d = hist['High'].max()
-                low_5d = hist['Low'].min()
                 unit = "$" if "=F" in sym else "₹"
-                report.append(
-                    f"{name}: {unit}{curr_price:.2f} ({change_pct:+.2f}%) | Today H/L: {unit}{day_high:.2f}/{unit}{day_low:.2f} | 5D H/L: {unit}{high_5d:.2f}/{unit}{low_5d:.2f}"
-                )
+                report.append(f"{name}: {unit}{curr_price:.2f} ({change_pct:+.2f}%)")
         except Exception:
             continue
     return " | ".join(report)
@@ -129,13 +129,13 @@ def scan_top5_smart_money_only():
     fake_traps_detected = []
 
     try:
-        data = yf.download(NIFTY100_LOW_PRICE, period="15d", group_by="ticker", progress=False, threads=True)
+        data = yf.download(NIFTY100_LOW_PRICE, period="10d", group_by="ticker", progress=False, threads=True)
         for sym in NIFTY100_LOW_PRICE:
             try:
                 if sym not in data.columns.levels[0]:
                     continue
                 hist = data[sym].dropna()
-                if len(hist) >= 10:
+                if len(hist) >= 8:
                     curr_price = float(hist['Close'].iloc[-1])
                     prev_close = float(hist['Close'].iloc[-2])
                     open_price = float(hist['Open'].iloc[-1])
@@ -146,48 +146,27 @@ def scan_top5_smart_money_only():
                         continue
 
                     day_change_pct = ((curr_price - prev_close) / prev_close) * 100
-                    intraday_move_pct = ((curr_price - open_price) / open_price) * 100
                     avg_vol = float(hist['Volume'].iloc[:-1].mean())
                     curr_vol = float(hist['Volume'].iloc[-1])
                     vol_ratio = (curr_vol / avg_vol) if avg_vol > 0 else 1.0
 
-                    high_5d = float(hist['High'].iloc[-5:].max())
-                    low_5d = float(hist['High'].iloc[-5:].min())
-                    high_15d = float(hist['High'].max())
-                    low_15d = float(hist['Low'].min())
-
                     clean_name = sym.replace(".NS", "")
                     day_range = day_high - day_low
-
                     upper_wick_ratio = ((day_high - curr_price) / day_range) if day_range > 0 else 0
                     lower_wick_ratio = ((curr_price - day_low) / day_range) if day_range > 0 else 0
 
                     if day_change_pct > 1.0 and (vol_ratio < 1.1 or upper_wick_ratio > 0.55):
-                        fake_traps_detected.append(f"{clean_name} (Fake Bullish Trap: Vol {vol_ratio:.1f}x, High Rejection)")
+                        fake_traps_detected.append(f"{clean_name} (Fake Bullish)")
                         continue
 
                     if day_change_pct < -1.0 and (vol_ratio < 1.1 or lower_wick_ratio > 0.55):
-                        fake_traps_detected.append(f"{clean_name} (Fake Breakdown Trap: Vol {vol_ratio:.1f}x, Low Rejection)")
+                        fake_traps_detected.append(f"{clean_name} (Fake Bearish)")
                         continue
 
-                    info = (
-                        f"{clean_name}: Price ₹{curr_price:.2f} (Day: {day_change_pct:+.2f}%, Intraday: {intraday_move_pct:+.2f}%) | "
-                        f"Smart Vol: {vol_ratio:.1f}x | 5D Range: ₹{low_5d:.2f}-₹{high_5d:.2f} | 15D Range: ₹{low_15d:.2f}-₹{high_15d:.2f}"
-                    )
+                    info = f"{clean_name}: ₹{curr_price:.2f} ({day_change_pct:+.2f}%, Vol: {vol_ratio:.1f}x)"
 
-                    strong_bull_intra = (day_change_pct >= 1.2) and (vol_ratio >= 1.35) and (upper_wick_ratio <= 0.30)
-                    strong_bear_intra = (day_change_pct <= -1.2) and (vol_ratio >= 1.35) and (lower_wick_ratio <= 0.30)
-
-                    if strong_bull_intra or strong_bear_intra:
-                        intra_score = (vol_ratio * 2.5) + abs(day_change_pct)
-                        intraday_movers.append((intra_score, info))
-
-                    strong_bull_swing = (curr_price >= high_15d * 0.99) and (vol_ratio >= 1.3) and (upper_wick_ratio <= 0.30)
-                    strong_bear_swing = (curr_price <= low_15d * 1.01) and (vol_ratio >= 1.3) and (lower_wick_ratio <= 0.30)
-
-                    if strong_bull_swing or strong_bear_swing:
-                        swing_score = (vol_ratio * 2) + abs(day_change_pct)
-                        swing_movers.append((swing_score, info))
+                    if abs(day_change_pct) >= 1.2 and vol_ratio >= 1.35:
+                        intraday_movers.append(((vol_ratio * 2.5) + abs(day_change_pct), info))
 
             except Exception:
                 continue
@@ -195,17 +174,10 @@ def scan_top5_smart_money_only():
         pass
 
     intraday_movers.sort(key=lambda x: x[0], reverse=True)
-    swing_movers.sort(key=lambda x: x[0], reverse=True)
+    top5_intra = "\n".join([x[1] for x in intraday_movers[:5]]) or "NO_CONFIRMED_INTRADAY"
+    traps_str = ", ".join(fake_traps_detected[:3]) if fake_traps_detected else "None"
 
-    top5_intra = "\n".join([x[1] for x in intraday_movers[:5]]) or "NO_100_PERCENT_CONFIRMED_INTRADAY"
-    top5_swing = "\n".join([x[1] for x in swing_movers[:5]]) or "NO_100_PERCENT_CONFIRMED_SWING"
-    traps_str = ", ".join(fake_traps_detected[:5]) if fake_traps_detected else "None detected"
-
-    return (
-        f"VERIFIED INTRADAY (Smart Money Confirmed):\n{top5_intra}\n\n"
-        f"VERIFIED SWING (Smart Money Confirmed):\n{top5_swing}\n\n"
-        f"REJECTED FAKE BREAKOUTS/TRAPS:\n{traps_str}"
-    )
+    return f"INTRADAY MOVERS:\n{top5_intra}\nREJECTED TRAPS:\n{traps_str}"
 
 def send_telegram_alert(full_message):
     token = (TELEGRAM_BOT_TOKEN or "").strip()
@@ -233,47 +205,30 @@ def analyze_everything():
     if nse_live:
         active_markets.append("NSE Indian Stocks & Index (Live)")
 
-    mcx_intra_line = "- MCX Intraday (Gold, Silver): Action | Entry | Target | Stop-Loss (SL)" if mcx_live else ""
-    nse_idx_intra_line = "- Index Intraday (Nifty 50, Bank Nifty): Action | Entry | Target | Stop-Loss (SL)" if nse_live else ""
-    nse_stk_intra_line = "- Nifty 100 Top 5 (<₹1000) INTRADAY: ਜੇ ਕੋਈ 100% ਪੱਕਾ ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ ਤਾਂ ਸਾਫ਼ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Intraday ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ, Fake Move ਤੋਂ ਬਚੋ (WAIT)'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | Smart Money ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
-
-    mcx_swing_line = "- MCX Swing (Gold, Silver): Action | Entry Zone | Target | Stop-Loss (SL)" if mcx_live else ""
-    nse_idx_swing_line = "- Index Swing (Nifty 50, Bank Nifty): Action | Entry Zone | Target | Stop-Loss (SL)" if nse_live else ""
-    nse_stk_swing_line = "- Nifty 100 Top 5 (<₹1000) SWING: ਜੇ ਕੋਈ ਪੱਕਾ ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਹੈ ਤਾਂ ਲਿਖੋ 'ਇਸ ਵੇਲੇ ਕੋਈ 100% ਪੱਕਾ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ, ਉਡੀਕ ਕਰੋ'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | ਅਸਲੀ ਬ੍ਰੇਕਆਊਟ ਕਾਰਨ | Entry (₹) | Target (₹) | Stop-Loss (₹)" if nse_live else ""
+    mcx_intra_line = "- MCX Intraday (Gold, Silver): Action | Entry | Target | SL" if mcx_live else ""
+    nse_idx_intra_line = "- Index Intraday (Nifty 50, Bank Nifty): Action | Entry | Target | SL" if mcx_live else ""
+    nse_stk_intra_line = "- Nifty 100 Top 5 (<₹1000) INTRADAY: ਜੇ ਕੋਈ ਸੈੱਟਅੱਪ ਨਹੀਂ ਹੈ ਤਾਂ ਲਿਖੋ 'ਕੋਈ ਪੱਕਾ ਸੈੱਟਅੱਪ ਨਹੀਂ, WAIT'। ਨਹੀਂ ਤਾਂ: ਦਿਸ਼ਾ | Entry | Target | SL" if nse_live else ""
 
     prompt = (
-        "Act as an elite Institutional Smart Money Trader, Liquidity Hunter, and Risk Manager.\n"
+        "Act as an elite Institutional Smart Money Trader and Risk Manager.\n"
         f"Current Time: {time_str}\n"
-        f"ACTIVE LIVE MARKETS RIGHT NOW: {', '.join(active_markets)}\n\n"
-        "STRICT CAPITAL PROTECTION & 100% VERIFIED TRADING RULES:\n"
-        "1. ONLY report on currently active markets as per their live timings. Do NOT give Indian Stock/Index calls when NSE is closed.\n"
-        "2. NEVER force a trade! If volume is low, chart is sideways, or a Fake Breakout / Liquidity Sweep is detected, do NOT give a BUY/SELL call—strictly mark it as 'WAIT / NO TRADE (Fake Move Risk)'.\n"
-        "3. Provide EXACT Entry, Target, and Stop-Loss (SL) for every valid setup. If a trade is not 100% high-conviction, reject it.\n"
-        "4. Keep INTRADAY and SWING trades strictly separated.\n\n"
-        "LIVE DATA FEED:\n"
-        f"- Crypto (24/7 Live): {crypto_info}\n"
-        f"- Live Indices/MCX: {live_market_data}\n"
-        f"- Nifty 100 (<₹1000) Smart Money Scan:\n{top5_stocks}\n"
-        f"- Global Major & Minor News Scan:\n{world_news}\n\n"
-        "Output the report in PURE PUNJABI (Gurmukhi script) for Telegram:\n\n"
-        "🕵️‍♂️ 1. ਵੱਡੇ ਖਿਡਾਰੀਆਂ ਦੀ ਚਾਲ, ਗਲੋਬਲ ਨਿਊਜ਼ & Fake Breakout ਚੇਤਾਵਨੀ\n"
-        "- ਦੁਨੀਆ ਭਰ ਦੀਆਂ ਖ਼ਬਰਾਂ ਅਤੇ FIIs / Whales ਦੀ ਪੋਜ਼ੀਸ਼ਨ।\n"
-        "- ਕਿੱਥੇ Fake Breakout ਬਣਾ ਕੇ ਰਿਟੇਲਰਾਂ ਨੂੰ ਫਸਾਇਆ ਜਾ ਰਿਹਾ ਹੈ।\n\n"
-        "══════════════════════════\n"
-        "⚡ ਭਾਗ A: INTRADAY TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਸੈੱਟਅੱਪ)\n"
-        "══════════════════════════\n"
-        "- Crypto Intraday (BTC, ETH, BNB, SOL): Action | Entry | Target | Stop-Loss (SL)\n"
+        f"ACTIVE MARKETS: {', '.join(active_markets)}\n\n"
+        "RULES:\n"
+        "1. Never force a trade. If sideways or fake break, mark 'WAIT / NO TRADE'.\n"
+        "2. Give exact Entry, Target, and Stop-Loss (SL) for valid setups.\n\n"
+        "DATA:\n"
+        f"- Crypto: {crypto_info}\n"
+        f"- Indices/MCX: {live_market_data}\n"
+        f"- Nifty 100 Scan:\n{top5_stocks}\n"
+        f"- News:\n{world_news}\n\n"
+        "Output in PURE PUNJABI (Gurmukhi script) for Telegram with exact Entry, Target, and SL:\n\n"
+        "🕵️‍♂️ 1. ਮਾਰਕੀਟ ਰਿਵਿਊ & Fake Breakout ਚੇਤਾਵਨੀ\n\n"
+        "⚡ ਭਾਗ A: INTRADAY TRADING\n"
+        "- Crypto Intraday (BTC, ETH, BNB, SOL): Action | Entry | Target | SL\n"
         f"{mcx_intra_line}\n"
         f"{nse_idx_intra_line}\n"
         f"{nse_stk_intra_line}\n\n"
-        "══════════════════════════\n"
-        "🌊 ਭਾਗ B: SWING TRADING (ਸਿਰਫ਼ 100% ਪੱਕੇ ਬ੍ਰੇਕਆਊਟ)\n"
-        "══════════════════════════\n"
-        "- Crypto Swing (BTC, ETH, BNB, SOL): Action | Entry Zone | Target | Stop-Loss (SL)\n"
-        f"{mcx_swing_line}\n"
-        f"{nse_idx_swing_line}\n"
-        f"{nse_stk_swing_line}\n\n"
-        "Strictly avoid markdown asterisks (*) or underscores (_) that break Telegram formatting."
+        "Strictly avoid markdown asterisks (*) or underscores (_)."
     )
 
     analysis_text = ask_gemini(prompt)
