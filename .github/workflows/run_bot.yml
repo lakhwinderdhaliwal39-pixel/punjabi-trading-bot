@@ -1,0 +1,28 @@
+name: Hourly Trading Bot
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # ਹਰ 1 ਘੰਟੇ ਬਾਅਦ ਆਪੇ ਚੱਲੇਗਾ
+  workflow_dispatch:      # ਤੁਸੀਂ ਜਦੋਂ ਮਰਜ਼ੀ ਹੱਥੀਂ ਵੀ ਚਲਾ ਸਕਦੇ ਹੋ
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests yfinance feedparser
+
+      - name: Run Trading Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py
