@@ -8,7 +8,7 @@ import pytz
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-MODEL_ID = "gemini-3.8-flash"  # ਇੱਥੇ ਨਵਾਂ ਮਾਡਲ ਅਪਡੇਟ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ
+MODEL_ID = "gemini-3.8-flash"
 
 NIFTY100_LOW_PRICE = [
     "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
@@ -46,7 +46,8 @@ def ask_gemini(prompt):
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
-        response = requests.post(url, headers=headers, json=data, timeout=120)
+        # Timeout ਵਧਾ ਕੇ 180 ਸਕਿੰਟ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ
+        response = requests.post(url, headers=headers, json=data, timeout=180)
         res_json = response.json()
         if 'candidates' in res_json and len(res_json['candidates']) > 0:
             return res_json['candidates'][0]['content']['parts'][0]['text']
