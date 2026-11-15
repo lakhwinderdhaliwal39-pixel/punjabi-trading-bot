@@ -20,8 +20,8 @@ NIFTY100_LOW_PRICE = [
 ]
 
 def ask_gemini(prompt):
-    base = "https://" + "://googleapis.com"
-    url = f"{base}/v1beta/models/{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
+     host = ".".join(["generativelanguage", "googleapis", "com"])
+    url = f"https://{host}/v1beta/models/{MODEL_ID}:generateContent?key={GEMINI_API_KEY}"
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
