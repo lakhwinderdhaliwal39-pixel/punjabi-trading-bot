@@ -129,8 +129,8 @@ def scan_top5_intraday_and_swing():
     except Exception:
         pass
 
-    movers.sort(key=lambda x: x, reverse=True)
-    top_5 = [item for item in movers[:5]]
+     movers.sort(reverse=True)
+    top_5 = [info for score, info in movers[:5]]
     
     if not top_5:
         return "NO_STRONG_MOVE: ਇਸ ਵੇਲੇ Nifty 100 ਦੇ ਘੱਟ ਕੀਮਤ ਵਾਲੇ ਸ਼ੇਅਰਾਂ ਵਿੱਚ ਕੋਈ ਵੱਡਾ Intraday ਜਾਂ Swing ਬ੍ਰੇਕਆਊਟ ਨਹੀਂ ਬਣ ਰਿਹਾ।"
