@@ -37,21 +37,21 @@ def get_live_market_status():
     return now.strftime("%d-%b-%Y %I:%M %p IST"), nse_live, mcx_live, crypto_live
 
 def ask_gemini(prompt):
-    # ਮਾਡਲਾਂ ਦੀ ਲਿਸਟ ਅਤੇ ਐਡਵਾਂਸਡ ਰੀਟਰਾਈ ਲੂਪ
-    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+    # ਮਾਡਲਾਂ ਦੀ ਲਿਸਟ - ਸਭ ਤੋਂ ਵੱਧ ਸਟੇਬਲ ਮਾਡਲ ਪਹਿਲਾਂ ਰੱਖੇ ਗਏ ਹਨ
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-3.5-flash"]
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
 
     for model_id in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
-        for attempt in range(3):
+        for attempt in range(3): # ਹਰੇਕ ਮਾਡਲ ਲਈ 3 ਵਾਰ ਕੋਸ਼ਿਸ਼
             try:
                 print(f"Trying {model_id} (Attempt {attempt+1})...")
                 response = requests.post(url, headers=headers, json=data, timeout=120)
                 
                 if response.status_code in [503, 429]:
-                    print(f"[{model_id}] Server Busy ({response.status_code}), waiting 10s before retry...")
-                    time.sleep(10)
+                    print(f"[{model_id}] Server Busy ({response.status_code}), waiting 15s before retry...")
+                    time.sleep(15) # 15 ਸਕਿੰਟ ਉਡੀਕ ਕਰੋ ਤਾਂ ਜੋ ਸਰਵਰ ਦਾ ਲੋਡ ਘੱਟ ਹੋਵੇ
                     continue
                 
                 res_json = response.json()
@@ -62,7 +62,7 @@ def ask_gemini(prompt):
                 time.sleep(5)
             except Exception as e:
                 print(f"[{model_id}] Exception error: {e}")
-                time.sleep(5)
+                time.sleep(10)
 
     return "ਸਰਵਰ ਬਹੁਤ ਜ਼ਿਆਦਾ ਬਿਜ਼ੀ (503) ਹੋਣ ਕਾਰਨ ਮੌਜੂਦਾ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ। ਅਗਲੇ ਸਲੌਟ ਵਿੱਚ ਆਟੋਮੈਟਿਕ ਕੋਸ਼ਿਸ਼ ਕੀਤੀ ਜਾਵੇਗੀ।"
 
