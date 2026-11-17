@@ -13,7 +13,6 @@ GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
 TELEGRAM_BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
 TELEGRAM_CHAT_ID = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
 
-# ਪੁਰਾਣੇ ਕੋਡ ਵਾਲੇ 33 Nifty 100 ਸਟਾਕ (< ₹1000)
 NIFTY100_LOW_PRICE = [
     "PNB.NS", "BANKBARODA.NS", "CANBK.NS", "SAIL.NS", "ETERNAL.NS",
     "IRCTC.NS", "POWERGRID.NS", "NTPC.NS", "COALINDIA.NS", "BHEL.NS",
@@ -38,33 +37,36 @@ def get_live_market_status():
     return now.strftime("%d-%b-%Y %I:%M %p IST"), nse_live, mcx_live, crypto_live
 
 def ask_gemini(prompt):
-    # 503 ਐਰਰ ਤੋਂ ਬਚਣ ਲਈ ਵੱਖ-ਵੱਖ ਮਾਡਲਾਂ ਦਾ ਆਟੋ-ਫਾਲਬੈਕ ਅਤੇ ਰੀਟਰਾਈ ਲੂਪ
-    models_to_try = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-pro"]
+    # ਮਾਡਲਾਂ ਦੀ ਲਿਸਟ ਅਤੇ ਐਡਵਾਂਸਡ ਰੀਟਰਾਈ ਲੂਪ
+    models_to_try = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
     headers = {'Content-Type': 'application/json'}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
 
     for model_id in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={GEMINI_API_KEY}"
-        for attempt in range(2):
+        for attempt in range(3):
             try:
-                response = requests.post(url, headers=headers, json=data, timeout=90)
+                print(f"Trying {model_id} (Attempt {attempt+1})...")
+                response = requests.post(url, headers=headers, json=data, timeout=120)
+                
                 if response.status_code in [503, 429]:
-                    print(f"[{model_id}] Busy ({response.status_code}), retrying in 4s...")
-                    time.sleep(4)
+                    print(f"[{model_id}] Server Busy ({response.status_code}), waiting 10s before retry...")
+                    time.sleep(10)
                     continue
+                
                 res_json = response.json()
                 if 'candidates' in res_json and len(res_json['candidates']) > 0:
                     return res_json['candidates'][0]['content']['parts'][0]['text']
-                print(f"[{model_id}] Response JSON: {res_json}")
-                break
+                
+                print(f"[{model_id}] Unexpected API JSON: {res_json}")
+                time.sleep(5)
             except Exception as e:
-                print(f"[{model_id}] Error: {e}")
-                time.sleep(2)
+                print(f"[{model_id}] Exception error: {e}")
+                time.sleep(5)
 
     return "ਸਰਵਰ ਬਹੁਤ ਜ਼ਿਆਦਾ ਬਿਜ਼ੀ (503) ਹੋਣ ਕਾਰਨ ਮੌਜੂਦਾ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ। ਅਗਲੇ ਸਲੌਟ ਵਿੱਚ ਆਟੋਮੈਟਿਕ ਕੋਸ਼ਿਸ਼ ਕੀਤੀ ਜਾਵੇਗੀ।"
 
 def get_crypto_prices():
-    # Binance 24hr Live API (ਸਿੱਧਾ ਲਾਈਵ ਪ੍ਰਾਈਜ਼, ਹਾਈ, ਲੋਅ ਅਤੇ ਵਾਲੀਅਮ)
     coins = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "BNB": "BNBUSDT", "SOL": "SOLUSDT"}
     report = []
     for sym, pair in coins.items():
